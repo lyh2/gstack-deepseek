@@ -207,4 +207,10 @@ describeCodex('Codex E2E', () => {
       outputLower.includes('p2');
     expect(hasReviewContent).toBe(true);
   }, 600_000);
+
+  testIfSelected('codex skill template is codex-only and does not include deepseek provider option', () => {
+    const codexSkill = fs.readFileSync(path.join(ROOT, 'codex/SKILL.md'), 'utf8');
+    expect(codexSkill).not.toContain('/codex deepseek');
+    expect(codexSkill.toLowerCase()).not.toContain('deepseek cli not found');
+  });
 });

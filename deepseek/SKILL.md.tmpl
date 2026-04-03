@@ -1,0 +1,212 @@
+---
+name: deepseek
+preamble-tier: 3
+version: 1.0.0
+description: |
+  Deepseek API wrapper — three modes. Code review: independent diff review.
+  Challenge: adversarial mode to break the code. Consult: ask DeepSeek anything with
+  message-history continuity for follow-ups. The Deepseek second opinion provides
+dependent analysis separate from /codex.
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Glob
+  - Grep
+  - AskUserQuestion
+---
+
+{{PREAMBLE}}
+
+{{BASE_BRANCH_DETECT}}
+
+# /deepseek — Multi-AI Second Opinion (Deepseek)
+
+You are running the `/deepseek` skill. This wraps the DeepSeek API to get an
+independent, brutally honest second opinion from an alternate AI system.
+
+---
+
+## Step 0: Check DeepSeek API configuration
+
+```bash
+DEEPSEEK_API_KEY_PRESENT=$([ -n "${DEEPSEEK_API_KEY:-}" ] && echo "YES" || echo "NO")
+DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+DEEPSEEK_REVIEW_MODEL="${DEEPSEEK_REVIEW_MODEL:-${DEEPSEEK_MODEL:-deepseek-reasoner}}"
+DEEPSEEK_CHAT_MODEL="${DEEPSEEK_CHAT_MODEL:-deepseek-chat}"
+printf "API_KEY:%s\nBASE_URL:%s\nREVIEW_MODEL:%s\nCHAT_MODEL:%s\n" \
+  "$DEEPSEEK_API_KEY_PRESENT" "$DEEPSEEK_BASE_URL" "$DEEPSEEK_REVIEW_MODEL" "$DEEPSEEK_CHAT_MODEL"
+```
+
+If `API_KEY:NO`: stop and tell the user:
+"DeepSeek API is not configured. Set `DEEPSEEK_API_KEY` in your shell environment first.
+Optional overrides: `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `DEEPSEEK_REVIEW_MODEL`, `DEEPSEEK_CHAT_MODEL`."
+
+When the user asks where to configure it, recommend shell env vars, for example:
+
+```bash
+export DEEPSEEK_API_KEY="your-key"
+export DEEPSEEK_BASE_URL="https://api.deepseek.com"
+export DEEPSEEK_MODEL="deepseek-reasoner"
+```
+
+---
+
+## Step 1: Detect mode
+
+Parse the user's input to determine which mode to run:
+
+1. `/deepseek review` or `/deepseek review <instructions>` — **Review mode** (Step 2A)
+2. `/deepseek challenge` or `/deepseek challenge <focus>` — **Challenge mode** (Step 2B)
+3. `/deepseek` with no arguments — **Auto-detect:**
+   - Check for a diff (with fallback if origin isn't available):
+     `git diff origin/<base> --stat 2>/dev/null | tail -1 || git diff <base> --stat 2>/dev/null | tail -1`
+   - If diff exists, use AskUserQuestion: Review or Challenge or Custom.
+   - If no diff, plan-file detection as in /codex workflow.
+4. `/deepseek <anything else>` — **Consult mode** (Step 2C), where remaining text is prompt
+
+---
+
+## Step 2A: Review Mode
+
+Run DeepSeek code review against the current branch diff using the chat completions API.
+
+1. Create temp files for output capture:
+```bash
+TMPREQ=$(mktemp /tmp/deepseek-req-XXXXXX.json)
+TMPRESP=$(mktemp /tmp/deepseek-resp-XXXXXX.json)
+```
+
+2. Capture the diff against the base branch:
+```bash
+DIFF=$(git diff --unified=3 origin/<base> 2>/dev/null || git diff --unified=3 <base> 2>/dev/null)
+```
+
+If the diff is empty, stop and tell the user no changes were found to review.
+
+3. Build the request JSON. The system prompt should ask for a production-grade code review
+with explicit severity markers `[P1]`, `[P2]`, `[P3]`, concise evidence, and no fluff.
+Include the diff and any custom instructions in the user message.
+
+```bash
+cat > "$TMPREQ" <<'EOF'
+{
+  "model": "REVIEW_MODEL",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a brutally honest senior reviewer. Review the git diff for production risks. Report only real issues. Use markers [P1] critical, [P2] high, [P3] medium. Include file references when possible. If there are no issues, say CLEAN."
+    },
+    {
+      "role": "user",
+      "content": "Base branch: <base>\nCustom focus: <custom instructions or none>\n\nGit diff:\n<diff here>"
+    }
+  ],
+  "stream": false
+}
+EOF
+```
+
+Replace `REVIEW_MODEL` with `$DEEPSEEK_REVIEW_MODEL`.
+
+4. Call the API with a 5-minute timeout:
+```bash
+curl -sS "$DEEPSEEK_BASE_URL/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+  --max-time 300 \
+  --data-binary @"$TMPREQ" > "$TMPRESP"
+```
+
+5. Read the assistant output and token usage:
+```bash
+python3 - <<'PY' "$TMPRESP"
+import json, sys
+data = json.load(open(sys.argv[1]))
+msg = data["choices"][0]["message"]["content"]
+usage = data.get("usage", {})
+print(msg)
+print(f"\ntokens used: {usage.get('total_tokens', 'unknown')}")
+PY
+```
+
+6. Determine the gate by markers in the model output:
+- Any `[P1]` => **FAIL**
+- Otherwise => **PASS**
+
+7. Present the full review output verbatim, then summarize gate + tokens.
+
+8. Clean up temp files.
+
+---
+
+## Step 2B: Challenge (Adversarial) Mode
+
+DeepSeek tries to break your code — edge cases, race conditions, security holes.
+
+1. Capture the diff against the base branch.
+2. Build a request to the chat completions API using `$DEEPSEEK_REVIEW_MODEL`.
+   The system prompt should say: think like an attacker and chaos engineer,
+   search for failure modes, edge cases, data corruption, race conditions,
+   auth issues, privilege escalation, and silent breakage. No compliments.
+3. Call the API with the same `curl` pattern as Review mode.
+4. Print the returned message verbatim and token usage.
+
+Example shape:
+```bash
+curl -sS "$DEEPSEEK_BASE_URL/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+  --max-time 300 \
+  --data-binary @"$TMPREQ" > "$TMPRESP"
+```
+
+---
+
+## Step 2C: Consult Mode
+
+The DeepSeek API is stateless, so session continuity is implemented by saving message
+history locally.
+
+1. Create `.context/deepseek-history.json` if it does not exist. This file stores the
+   message array to resend on follow-up questions.
+2. If history exists, ask the user whether to continue or start fresh, same pattern as `/codex`.
+3. For a new conversation, start with:
+```json
+[
+  {"role":"system","content":"You are a terse, technically rigorous assistant. Be direct and useful."}
+]
+```
+4. Append the user's new prompt to the message array.
+5. If the prompt is asking to review a plan, optionally read the plan file and prepend the
+   same plan-review framing used by `/codex`.
+6. Build a request JSON using `$DEEPSEEK_CHAT_MODEL` for general consults and
+   `$DEEPSEEK_REVIEW_MODEL` for architecture / review-heavy consults.
+7. Call the API with `curl`, parse the returned assistant message, print it verbatim,
+   then append that assistant message back into `.context/deepseek-history.json`.
+8. If the API call fails, do not overwrite the saved history.
+
+Suggested persistence flow:
+```bash
+mkdir -p .context
+HISTORY_FILE=.context/deepseek-history.json
+```
+
+---
+
+## Model & Reasoning
+
+**Provider:** DeepSeek Chat Completions API (`$DEEPSEEK_BASE_URL/chat/completions`).
+**Auth:** `DEEPSEEK_API_KEY` environment variable.
+**Default review model:** `deepseek-reasoner`.
+**Default consult model:** `deepseek-chat`.
+**Reasoning:** Use `deepseek-reasoner` for review/challenge and complex consults.
+**Compatibility:** DeepSeek is OpenAI-compatible at `https://api.deepseek.com` (or `/v1` if the user's SDK requires it).
+
+## Error Handling
+
+- **Missing API key:** Stop with instructions to set `DEEPSEEK_API_KEY`.
+- **401/403:** Tell the user the DeepSeek API key is invalid or unauthorized.
+- **429:** Tell the user the DeepSeek API rate limit or quota was hit.
+- **Timeout:** Tell the user the request exceeded 5 minutes; suggest smaller scope.
+- **Empty response:** Tell the user the API returned no assistant content.

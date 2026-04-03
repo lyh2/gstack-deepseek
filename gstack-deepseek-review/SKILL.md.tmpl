@@ -1,0 +1,100 @@
+---
+name: gstack-deepseek-review
+preamble-tier: 3
+version: 1.0.0
+description: |
+  DeepSeek-first review for token-heavy projects. Runs an independent PR/code diff review
+  against the current branch using the DeepSeek API instead of leaning on the host model
+  for the heavy analysis. Use when you want a cheaper outside review pass before /review.
+allowed-tools:
+  - Bash
+  - Read
+  - Grep
+  - Glob
+---
+
+{{PREAMBLE}}
+
+{{BASE_BRANCH_DETECT}}
+
+# DeepSeek Review
+
+Use this skill when the project should offload heavy review thinking to DeepSeek.
+This skill is intentionally read-only. It does not edit files, run browser flows, or ship code.
+
+## Step 0: Check DeepSeek API configuration
+
+```bash
+DEEPSEEK_API_KEY_PRESENT=$([ -n "${DEEPSEEK_API_KEY:-}" ] && echo "YES" || echo "NO")
+DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+DEEPSEEK_REVIEW_MODEL="${DEEPSEEK_REVIEW_MODEL:-${DEEPSEEK_MODEL:-deepseek-reasoner}}"
+printf "API_KEY:%s\nBASE_URL:%s\nREVIEW_MODEL:%s\n" \
+  "$DEEPSEEK_API_KEY_PRESENT" "$DEEPSEEK_BASE_URL" "$DEEPSEEK_REVIEW_MODEL"
+```
+
+If `API_KEY:NO`: stop and tell the user to set `DEEPSEEK_API_KEY`.
+
+## Step 1: Gather review context
+
+1. Detect the current branch and stop if there is no diff against `<base>`.
+2. Read `TODOS.md`, `CLAUDE.md`, and recent commit messages if they exist.
+3. Capture the full diff against the base branch:
+
+```bash
+DIFF=$(git diff --unified=3 origin/<base> 2>/dev/null || git diff --unified=3 <base> 2>/dev/null)
+```
+
+If the diff is empty, stop and say there is nothing to review.
+
+## Step 2: Send review to DeepSeek
+
+1. Create temp files:
+
+```bash
+TMPREQ=$(mktemp /tmp/ds-review-req-XXXXXX.json)
+TMPRESP=$(mktemp /tmp/ds-review-resp-XXXXXX.json)
+```
+
+2. Build a request that asks DeepSeek to do a production-focused review:
+   - report only real issues
+   - use `[P1]`, `[P2]`, `[P3]`
+   - include file references where possible
+   - call out scope drift and missing tests
+   - say `CLEAN` if no issues
+
+3. Call DeepSeek:
+
+```bash
+curl -sS "$DEEPSEEK_BASE_URL/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+  --max-time 300 \
+  --data-binary @"$TMPREQ" > "$TMPRESP"
+```
+
+4. Parse the output:
+
+```bash
+python3 - <<'PY' "$TMPRESP"
+import json, sys
+data = json.load(open(sys.argv[1]))
+msg = data["choices"][0]["message"]["content"]
+usage = data.get("usage", {})
+print(msg)
+print(f"\ntokens used: {usage.get('total_tokens', 'unknown')}")
+PY
+```
+
+## Step 3: Report
+
+Present the DeepSeek output verbatim first. Then add a short synthesis:
+- gate = FAIL if any `[P1]` appears, else PASS
+- highlight the 1-3 most important findings
+- note that this is a DeepSeek-first review pass, not a full `/review` auto-fix workflow
+
+## Error handling
+
+- Missing API key: stop with `DEEPSEEK_API_KEY` instructions
+- 401/403: invalid key or auth issue
+- 429: rate limit or quota issue
+- timeout: suggest narrowing review scope

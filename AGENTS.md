@@ -25,6 +25,12 @@ Skills live in `.agents/skills/`. Invoke them by name (e.g., `/office-hours`).
 | `/retro` | Weekly retro with per-person breakdowns and shipping streaks. |
 | `/browse` | Headless browser — real Chromium, real clicks, ~100ms/command. |
 | `/setup-browser-cookies` | Import cookies from your real browser for authenticated testing. |
+| `/codex` | Independent second opinion via OpenAI Codex CLI. |
+| `/deepseek` | Independent second opinion via the DeepSeek API. |
+| `/gstack-deepseek-review` | DeepSeek-first diff review for token-heavy projects. |
+| `/gstack-deepseek-office-hours` | DeepSeek-first product brainstorming and wedge critique. |
+| `/gstack-deepseek-plan-eng-review` | DeepSeek-first architecture and test-gap plan review. |
+| `/gstack-deepseek-plan-ceo-review` | DeepSeek-first CEO/product plan critique. |
 | `/careful` | Warn before destructive commands (rm -rf, DROP TABLE, force-push). |
 | `/freeze` | Lock edits to one directory. Hard block, not just a warning. |
 | `/guard` | Activate both careful + freeze at once. |

@@ -1,0 +1,59 @@
+---
+name: gstack-deepseek-plan-eng-review
+preamble-tier: 3
+version: 1.0.0
+description: |
+  DeepSeek-first engineering plan review for token-heavy projects. Sends the current plan
+  or design doc to DeepSeek for architecture, failure-mode, and test-gap critique before
+  implementation.
+allowed-tools:
+  - Bash
+  - Read
+  - Grep
+  - Glob
+---
+
+{{PREAMBLE}}
+
+# DeepSeek Engineering Plan Review
+
+This skill offloads the heavy architecture critique to DeepSeek.
+
+## Step 0: Check DeepSeek API configuration
+
+```bash
+DEEPSEEK_API_KEY_PRESENT=$([ -n "${DEEPSEEK_API_KEY:-}" ] && echo "YES" || echo "NO")
+DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+DEEPSEEK_REVIEW_MODEL="${DEEPSEEK_REVIEW_MODEL:-${DEEPSEEK_MODEL:-deepseek-reasoner}}"
+printf "API_KEY:%s\nBASE_URL:%s\nMODEL:%s\n" \
+  "$DEEPSEEK_API_KEY_PRESENT" "$DEEPSEEK_BASE_URL" "$DEEPSEEK_REVIEW_MODEL"
+```
+
+If `API_KEY:NO`: stop and tell the user to set `DEEPSEEK_API_KEY`.
+
+## Step 1: Find the plan
+
+1. Look for a recent project design doc or plan in `~/.gstack/projects/`.
+2. If a plan file is open or obvious from context, read that one first.
+3. If no plan can be found, stop and ask the user to point you at the plan.
+
+## Step 2: Send plan to DeepSeek
+
+Ask DeepSeek to review the plan like a skeptical eng manager:
+- architecture and system boundaries
+- data flow and state transitions
+- failure modes and silent failures
+- missing tests and observability
+- over-engineering and scope reduction opportunities
+- 1-2 ASCII diagrams if useful
+
+Use the DeepSeek API call shape from `/deepseek`.
+
+## Step 3: Report
+
+Return:
+- the DeepSeek review output
+- a compact summary of the biggest architectural risks
+- a short recommendation: proceed / revise architecture / reduce scope
+
+This is critique-only. Do not implement code changes.

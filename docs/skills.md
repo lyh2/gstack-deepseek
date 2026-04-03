@@ -23,6 +23,7 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | | | |
 | **Multi-AI** | | |
 | [`/codex`](#codex) | **Second Opinion** | Independent review from OpenAI Codex CLI. Three modes: code review (pass/fail gate), adversarial challenge, and open consultation with session continuity. Cross-model analysis when both `/review` and `/codex` have run. |
+| [`/deepseek`](#deepseek) | **Second Opinion** | Independent review from the DeepSeek API. Three modes: code review, adversarial challenge, and open consultation. Parallel to /codex, decoupled provider implementation. |
 | | | |
 | **Safety & Utility** | | |
 | [`/careful`](#safety--guardrails) | **Safety Guardrails** | Warns before destructive commands (rm -rf, DROP TABLE, force-push, git reset --hard). Override any warning. Common build cleanups whitelisted. |
@@ -741,6 +742,38 @@ Claude: Running independent Codex review...
         OVERLAP: Race condition in payment handler (both caught it)
         UNIQUE TO CODEX: Token comparison timing attack
         UNIQUE TO CLAUDE: N+1 query in listing photos
+```
+
+---
+
+## `/deepseek`
+
+This is the same "outside second opinion" idea as `/codex`, but wired to the
+DeepSeek API instead of a local CLI.
+
+`/deepseek` is useful when you want a different model family to review the same diff,
+pressure-test an implementation, or sanity-check an architecture decision. It uses
+OpenAI-compatible chat completions against `https://api.deepseek.com`, reads
+`DEEPSEEK_API_KEY` from your shell environment, defaults to `deepseek-reasoner` for
+review/challenge work, and can use `deepseek-chat` for lighter consult flows.
+
+Because the API is stateless, follow-up continuity is handled by saving message history
+locally in `.context/deepseek-history.json` and resending it on the next call.
+
+Typical setup:
+
+```bash
+export DEEPSEEK_API_KEY="your-key"
+export DEEPSEEK_BASE_URL="https://api.deepseek.com"
+export DEEPSEEK_MODEL="deepseek-reasoner"
+```
+
+Then use it the same way:
+
+```text
+You:   /deepseek review
+You:   /deepseek challenge security
+You:   /deepseek should we split this job queue by tenant?
 ```
 
 ---

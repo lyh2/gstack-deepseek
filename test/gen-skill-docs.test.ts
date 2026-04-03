@@ -992,6 +992,7 @@ describe('Codex generation (--host codex)', () => {
     // Root → gstack
     expect(fs.existsSync(path.join(AGENTS_DIR, 'gstack', 'SKILL.md'))).toBe(true);
     // Subdirectories → gstack-{dir}
+    expect(fs.existsSync(path.join(AGENTS_DIR, 'gstack-deepseek', 'SKILL.md'))).toBe(true);
     expect(fs.existsSync(path.join(AGENTS_DIR, 'gstack-review', 'SKILL.md'))).toBe(true);
     expect(fs.existsSync(path.join(AGENTS_DIR, 'gstack-ship', 'SKILL.md'))).toBe(true);
     // gstack-upgrade doesn't double-prefix

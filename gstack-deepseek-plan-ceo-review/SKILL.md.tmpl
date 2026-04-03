@@ -1,0 +1,58 @@
+---
+name: gstack-deepseek-plan-ceo-review
+preamble-tier: 3
+version: 1.0.0
+description: |
+  DeepSeek-first CEO/product plan review for token-heavy projects. Uses DeepSeek to
+  challenge the framing, ambition, wedge, and user value of a plan before implementation.
+allowed-tools:
+  - Bash
+  - Read
+  - Grep
+  - Glob
+---
+
+{{PREAMBLE}}
+
+# DeepSeek CEO Plan Review
+
+This skill is the DeepSeek-first alternative to `/plan-ceo-review` for projects where
+product-strategy thinking is expensive on the host model.
+
+## Step 0: Check DeepSeek API configuration
+
+```bash
+DEEPSEEK_API_KEY_PRESENT=$([ -n "${DEEPSEEK_API_KEY:-}" ] && echo "YES" || echo "NO")
+DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+DEEPSEEK_REVIEW_MODEL="${DEEPSEEK_REVIEW_MODEL:-${DEEPSEEK_MODEL:-deepseek-reasoner}}"
+printf "API_KEY:%s\nBASE_URL:%s\nMODEL:%s\n" \
+  "$DEEPSEEK_API_KEY_PRESENT" "$DEEPSEEK_BASE_URL" "$DEEPSEEK_REVIEW_MODEL"
+```
+
+If `API_KEY:NO`: stop and tell the user to set `DEEPSEEK_API_KEY`.
+
+## Step 1: Gather the plan or design note
+
+1. Read the most relevant plan/design doc for this project.
+2. Read `CLAUDE.md` and `TODOS.md` if present.
+3. Summarize the current requested scope in a few lines.
+
+## Step 2: Send to DeepSeek
+
+Ask DeepSeek to act like a founder/CEO reviewer:
+- is this the right problem?
+- is the wedge sharp enough?
+- what is overbuilt or under-ambitious?
+- what would make this 10x better for 2x effort?
+- what should be explicitly out of scope?
+
+Use the DeepSeek API call shape from `/deepseek`.
+
+## Step 3: Report
+
+Return:
+- the DeepSeek output
+- a short verdict: hold scope / expand selectively / reduce scope
+- the 3 highest-value product or strategy corrections
+
+Do not write code.

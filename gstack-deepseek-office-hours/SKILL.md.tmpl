@@ -1,0 +1,62 @@
+---
+name: gstack-deepseek-office-hours
+preamble-tier: 3
+version: 1.0.0
+description: |
+  DeepSeek-first product brainstorming for token-heavy projects. Runs a YC-style product
+  and wedge critique through the DeepSeek API and writes a design note, without spending
+  the host model on the heavy ideation pass.
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Grep
+  - Glob
+---
+
+{{PREAMBLE}}
+
+# DeepSeek Office Hours
+
+This is a cheaper DeepSeek-first alternative to `/office-hours` for projects where the
+heavy ideation should come from DeepSeek.
+
+## Step 0: Check DeepSeek API configuration
+
+```bash
+DEEPSEEK_API_KEY_PRESENT=$([ -n "${DEEPSEEK_API_KEY:-}" ] && echo "YES" || echo "NO")
+DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+DEEPSEEK_REVIEW_MODEL="${DEEPSEEK_REVIEW_MODEL:-${DEEPSEEK_MODEL:-deepseek-reasoner}}"
+printf "API_KEY:%s\nBASE_URL:%s\nMODEL:%s\n" \
+  "$DEEPSEEK_API_KEY_PRESENT" "$DEEPSEEK_BASE_URL" "$DEEPSEEK_REVIEW_MODEL"
+```
+
+If `API_KEY:NO`: stop and tell the user to set `DEEPSEEK_API_KEY`.
+
+## Step 1: Gather project context
+
+1. Read `CLAUDE.md`, `TODOS.md`, and recent history if they exist.
+2. Summarize the user's stated project or feature idea in 2-4 lines.
+3. Create a design note path under `~/.gstack/projects/` using the project slug and timestamp.
+
+## Step 2: Ask DeepSeek for the product critique
+
+Send DeepSeek a prompt that asks it to act like a direct product reviewer:
+- identify the real user/problem behind the request
+- challenge hidden assumptions
+- propose the narrowest wedge
+- suggest 2-3 implementation approaches with tradeoffs
+- produce a draft design note
+
+Use the DeepSeek API call shape from `/deepseek`, with `deepseek-reasoner` by default.
+
+## Step 3: Output and save
+
+1. Show the full DeepSeek answer.
+2. Save the design note to `~/.gstack/projects/`.
+3. End with a short line telling the user this note can feed into `gstack-deepseek-plan-ceo-review`
+   or `gstack-deepseek-plan-eng-review`.
+
+## Important rule
+
+Do not write code. This is a design/strategy note workflow only.
